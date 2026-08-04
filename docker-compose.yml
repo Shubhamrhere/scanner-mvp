@@ -1,0 +1,202 @@
+# ──────────────────────────────────────────────────────────────
+# Distributed Vulnerability Scan Orchestration Engine
+# Docker Compose — Full Development Stack
+# ──────────────────────────────────────────────────────────────
+
+services:
+  # ── Data Layer ──────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: vulnscan-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-vulnscan}
+      POSTGRES_USER: ${POSTGRES_USER:-vulnscan}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vulnscan_dev_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-vulnscan}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vulnscan-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: vulnscan-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vulnscan-net
+
+  minio:
+    image: minio/minio:latest
+    container_name: vulnscan-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - vulnscan-net
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: vulnscan-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $${MINIO_ROOT_USER:-minioadmin} $${MINIO_ROOT_PASSWORD:-minioadmin};
+      mc mb --ignore-existing local/reports;
+      mc mb --ignore-existing local/scan-artifacts;
+      mc mb --ignore-existing local/evidence;
+      echo 'MinIO buckets initialized';
+      exit 0;
+      "
+    networks:
+      - vulnscan-net
+
+  # ── Control Plane ──────────────────────────────────────────
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vulnscan-api
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --log-level info
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/app:/app/app
+      - ./backend/alembic:/app/alembic
+    env_file:
+      - .env
+    environment:
+      - APP_ENV=development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - vulnscan-net
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    container_name: vulnscan-worker
+    command: >
+      celery -A app.workers.celery_app worker
+      --loglevel=info
+      --concurrency=4
+      --queues=default,scans,jobs,reports
+    volumes:
+      - ./backend/app:/app/app
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - vulnscan-net
+
+  scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.worker
+    container_name: vulnscan-scheduler
+    command: >
+      celery -A app.workers.celery_app beat
+      --loglevel=info
+      --scheduler celery.beat:PersistentScheduler
+    volumes:
+      - ./backend/app:/app/app
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - vulnscan-net
+
+  # ── Frontend ───────────────────────────────────────────────
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: development
+    container_name: vulnscan-frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/index.html:/app/index.html
+      - ./frontend/vite.config.ts:/app/vite.config.ts
+      - ./frontend/tailwind.config.ts:/app/tailwind.config.ts
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000/api/v1
+    networks:
+      - vulnscan-net
+
+  # ── Reverse Proxy (optional) ───────────────────────────────
+
+  nginx:
+    image: nginx:alpine
+    container_name: vulnscan-nginx
+    ports:
+      - "8080:80"
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+      - frontend
+    networks:
+      - vulnscan-net
+    profiles:
+      - proxy
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:
+
+networks:
+  vulnscan-net:
+    driver: bridge

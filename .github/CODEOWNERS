@@ -1,0 +1,17 @@
+# Code ownership rules for the repo
+
+# Default owner for everything not explicitly defined below
+*       @core-maintainers
+
+# Backend and API logic
+/backend/       @backend-team @security-team
+/backend/alembic/ @database-admins
+
+# Frontend UI Dashboard
+/frontend/      @frontend-team
+
+# CI/CD and Infrastructure
+/.github/       @devops-team
+/infra/         @devops-team
+/docker-compose.yml @devops-team
+/Makefile       @devops-team

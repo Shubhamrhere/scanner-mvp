@@ -1,0 +1,87 @@
+# ──────────────────────────────────────────────
+# Python
+# ──────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# ──────────────────────────────────────────────
+# Node / Frontend
+# ──────────────────────────────────────────────
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+coverage/
+
+# ──────────────────────────────────────────────
+# IDE
+# ──────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ──────────────────────────────────────────────
+# Environment / Secrets
+# ──────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+!.env.example
+!.env.test
+
+# ──────────────────────────────────────────────
+# Docker & Volumes
+# ──────────────────────────────────────────────
+docker-compose.override.yml
+docker-volumes/
+minio-data/
+pgdata/
+redisdata/
+
+# ──────────────────────────────────────────────
+# Database
+# ──────────────────────────────────────────────
+*.db
+*.sqlite3
+
+# ──────────────────────────────────────────────
+# Testing / Coverage
+# ──────────────────────────────────────────────
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ──────────────────────────────────────────────
+# Runtime & Output files
+# ──────────────────────────────────────────────
+tmp/
+logs/
+*.log
+reports/
+artifacts/
+scanner-output/
+downloads/
+
+# ──────────────────────────────────────────────
+# OS
+# ──────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
