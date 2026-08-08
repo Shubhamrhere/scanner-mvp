@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Scan SCAN-{{ scan.id }} - Vigilance SOC{% endblock %}
+{% block header_title %}Scan Details: SCAN-{{ scan.id }}{% endblock %}
+
+{% block content %}
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <section class="bg-surface-container border border-outline-variant p-6 flex flex-col gap-4">
+        <h3 class="font-label-caps text-label-caps text-on-surface uppercase tracking-wider border-b border-outline-variant pb-2">Overview</h3>
+        <div class="grid grid-cols-2 gap-y-4">
+            <div>
+                <div class="text-on-surface-variant font-label-caps text-[10px] uppercase">Type</div>
+                <div class="font-body-md text-on-surface capitalize">{{ scan.type }} Scan</div>
+            </div>
+            <div>
+                <div class="text-on-surface-variant font-label-caps text-[10px] uppercase">Status</div>
+                <div class="font-body-md text-on-surface capitalize flex items-center gap-2">
+                    {% if scan.status == 'running' %}
+                    <div class="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
+                    {% elif scan.status == 'queued' %}
+                    <div class="w-2 h-2 rounded-full bg-outline-variant"></div>
+                    {% else %}
+                    <div class="w-2 h-2 rounded-full bg-on-surface-variant"></div>
+                    {% endif %}
+                    {{ scan.status }}
+                </div>
+            </div>
+            <div>
+                <div class="text-on-surface-variant font-label-caps text-[10px] uppercase">Started</div>
+                <div class="font-body-md text-on-surface">{{ scan.start_time.strftime('%Y-%m-%d %H:%M:%S') if scan.start_time else '--' }}</div>
+            </div>
+            <div>
+                <div class="text-on-surface-variant font-label-caps text-[10px] uppercase">Ended</div>
+                <div class="font-body-md text-on-surface">{{ scan.end_time.strftime('%Y-%m-%d %H:%M:%S') if scan.end_time else '--' }}</div>
+            </div>
+        </div>
+    </section>
+
+    <section class="bg-surface-container border border-outline-variant p-6 flex flex-col gap-4">
+        <h3 class="font-label-caps text-label-caps text-on-surface uppercase tracking-wider border-b border-outline-variant pb-2">Targets</h3>
+        <ul class="flex flex-col gap-2">
+            {% for target in scan.scan_targets %}
+            <li class="flex items-center gap-2 text-body-md text-on-surface">
+                <span class="material-symbols-outlined text-[16px] text-on-surface-variant">dns</span>
+                {{ target.asset.hostname or target.asset.ip_address }} 
+                <span class="text-on-surface-variant text-sm">({{ target.asset.ip_address }})</span>
+            </li>
+            {% else %}
+            <li class="text-on-surface-variant text-sm">No targets associated with this scan.</li>
+            {% endfor %}
+        </ul>
+    </section>
+</div>
+
+<section class="bg-surface-container border border-outline-variant flex flex-col overflow-hidden mt-6">
+    <div class="px-4 py-3 border-b border-outline-variant flex justify-between items-center bg-surface-container-low">
+        <h2 class="font-label-caps text-label-caps text-on-surface uppercase tracking-wider flex items-center gap-2">
+            <span class="material-symbols-outlined text-[16px] text-error">bug_report</span>
+            Scan Findings
+        </h2>
+    </div>
+    <div class="overflow-x-auto flex-grow">
+        <table class="w-full text-left border-collapse">
+            <thead class="bg-surface-container-high border-b border-outline-variant sticky top-0">
+                <tr>
+                    <th class="px-table-cell-padding-x py-table-cell-padding-y w-10"></th>
+                    <th class="px-table-cell-padding-x py-table-cell-padding-y font-label-caps text-label-caps text-on-surface-variant uppercase font-medium">CVE</th>
+                    <th class="px-table-cell-padding-x py-table-cell-padding-y font-label-caps text-label-caps text-on-surface-variant uppercase font-medium">Asset</th>
+                    <th class="px-table-cell-padding-x py-table-cell-padding-y font-label-caps text-label-caps text-on-surface-variant uppercase font-medium">Description</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-outline-variant/50">
+                {% for finding in scan.findings %}
+                <tr class="hover:bg-surface-container-highest transition-colors cursor-pointer group {% if finding.severity == 'Critical' %}bg-error/5{% elif finding.severity == 'High' %}bg-tertiary-container/5{% endif %}">
+                    <td class="px-table-cell-padding-x py-table-cell-padding-y text-center">
+                        {% if finding.severity == 'Critical' %}
+                        <div class="w-2 h-8 bg-error mx-auto rounded-sm" title="Critical"></div>
+                        {% elif finding.severity == 'High' %}
+                        <div class="w-2 h-8 bg-tertiary-container mx-auto rounded-sm" title="High"></div>
+                        {% else %}
+                        <div class="w-2 h-8 bg-outline-variant mx-auto rounded-sm" title="{{ finding.severity }}"></div>
+                        {% endif %}
+                    </td>
+                    <td class="px-table-cell-padding-x py-table-cell-padding-y font-code-sm text-code-sm {% if finding.severity == 'Critical' %}text-error{% elif finding.severity == 'High' %}text-tertiary-container{% else %}text-on-surface-variant{% endif %} font-semibold">{{ finding.cve }}</td>
+                    <td class="px-table-cell-padding-x py-table-cell-padding-y font-code-sm text-code-sm text-on-surface">{{ finding.asset.hostname or finding.asset.ip_address }}</td>
+                    <td class="px-table-cell-padding-x py-table-cell-padding-y text-body-sm font-body-sm text-on-surface-variant truncate max-w-[200px]">{{ finding.description }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="px-table-cell-padding-x py-table-cell-padding-y text-on-surface-variant text-center">No findings reported yet.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

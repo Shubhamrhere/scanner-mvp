@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Technical Findings Report</title>
+    <style>
+        body { font-family: sans-serif; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+    </style>
+</head>
+<body>
+    <h1>Technical Findings Report</h1>
+    <p>Generated on {{ findings[0].created_at if findings else 'N/A' }}</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Asset ID</th>
+                <th>Severity</th>
+                <th>CVE</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for finding in findings %}
+            <tr>
+                <td>{{ finding.asset_id }}</td>
+                <td>{{ finding.severity }}</td>
+                <td>{{ finding.cve }}</td>
+                <td>{{ finding.description }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>
