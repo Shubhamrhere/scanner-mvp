@@ -32,6 +32,28 @@
                 <div class="text-on-surface-variant font-label-caps text-[10px] uppercase">Ended</div>
                 <div class="font-body-md text-on-surface">{{ scan.end_time.strftime('%Y-%m-%d %H:%M:%S') if scan.end_time else '--' }}</div>
             </div>
+            {% if scan.progress %}
+            <div class="col-span-2">
+                <div class="flex justify-between items-center mb-1">
+                    <div class="text-on-surface-variant font-label-caps text-[10px] uppercase">Progress</div>
+                    {% if scan.status == 'running' %}
+                    <div class="text-on-surface-variant text-[10px] font-bold">{{ scan.progress_percent }}%</div>
+                    {% endif %}
+                </div>
+                {% if scan.status == 'running' %}
+                <div class="w-full bg-surface-container-high rounded-full h-1.5 mb-2">
+                    <div class="bg-primary h-1.5 rounded-full transition-all duration-500" style="width: {{ scan.progress_percent }}%"></div>
+                </div>
+                {% endif %}
+                <div class="font-body-sm text-on-surface bg-surface-container-high p-2 rounded font-mono text-xs">{{ scan.progress }}</div>
+            </div>
+            {% endif %}
+            {% if scan.error_message %}
+            <div class="col-span-2 mt-2">
+                <div class="text-error font-label-caps text-[10px] uppercase font-bold flex items-center gap-1"><span class="material-symbols-outlined text-[12px]">error</span> Failure Reason</div>
+                <div class="font-body-sm text-error bg-error/10 border border-error/20 p-3 rounded mt-1 font-mono text-xs overflow-x-auto whitespace-pre">{{ scan.error_message }}</div>
+            </div>
+            {% endif %}
         </div>
     </section>
 

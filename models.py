@@ -17,6 +17,9 @@ class Scan(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     type = db.Column(db.String(50), nullable=False) # 'internal' or 'external'
     status = db.Column(db.String(50), default='queued') # queued, running, completed, failed
+    progress = db.Column(db.String(255), nullable=True)
+    progress_percent = db.Column(db.Integer, default=0)
+    error_message = db.Column(db.Text, nullable=True)
     start_time = db.Column(db.DateTime, nullable=True)
     end_time = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

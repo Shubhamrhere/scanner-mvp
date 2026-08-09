@@ -25,6 +25,8 @@ def execute_scan(scan_id, scan_type, asset_ids):
             return
             
         scan.status = 'running'
+        scan.progress = 'Initializing scan...'
+        scan.progress_percent = 5
         scan.start_time = datetime.utcnow()
         db.session.commit()
         
@@ -45,15 +47,25 @@ def execute_scan(scan_id, scan_type, asset_ids):
                     # Route to Nuclei CLI
                     _run_nuclei_scan(scan_id, asset_id, target, db, Finding)
                     
+            scan.progress_percent = 100
+            scan.progress = 'Completed'
             scan.status = 'completed'
         except Exception as e:
-            print(f"Error executing scan {scan_id}: {e}")
+            import traceback
+            print(f"Error executing scan {scan_id}:\n{traceback.format_exc()}")
             scan.status = 'failed'
+            scan.error_message = str(e)
+            scan.progress = 'Failed'
         finally:
             scan.end_time = datetime.utcnow()
             db.session.commit()
 
 def _run_nuclei_scan(scan_id, asset_id, target, db, Finding):
+    scan = Scan.query.get(scan_id)
+    scan.progress = f"Running Nuclei on {target}..."
+    scan.progress_percent = 20
+    db.session.commit()
+    
     cmd = [
         'nuclei',
         '-u', target,
@@ -62,8 +74,11 @@ def _run_nuclei_scan(scan_id, asset_id, target, db, Finding):
     ]
     
     try:
-        # Run subprocess (timeout at 10 minutes)
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        
+        scan.progress = f"Parsing Nuclei results for {target}..."
+        scan.progress_percent = 80
+        db.session.commit()
         
         for line in result.stdout.splitlines():
             if not line.strip():
@@ -92,26 +107,37 @@ def _run_nuclei_scan(scan_id, asset_id, target, db, Finding):
                 pass
                 
         db.session.commit()
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as e:
         print(f"Nuclei scan timed out for {target}")
+        raise e
     except Exception as e:
         print(f"Nuclei error: {e}")
+        raise e
 
 def _run_openvas_scan(scan_id, asset_id, target, db, Finding):
     from gvm.connections import TLSConnection
     from gvm.protocols.gmp import Gmp
     from gvm.transforms import EtreeTransform
     
+    scan = Scan.query.get(scan_id)
+    scan.progress = f"Connecting to OpenVAS for {target}..."
+    db.session.commit()
+    
     # We attempt to connect to OpenVAS container locally
     try:
+        from gvm.protocols.gmp.requests.v224 import AliveTest
         connection = TLSConnection(hostname='openvas', port=9390)
         transform = EtreeTransform()
         
         with Gmp(connection=connection, transform=transform) as gmp:
             gmp.authenticate('admin', 'admin')
             
-            # Create target
-            res = gmp.create_target(name=f"Target-{target}", hosts=[target])
+            scan.progress = f"Creating OpenVAS target {target}..."
+            scan.progress_percent = 10
+            db.session.commit()
+            
+            # Create target (Consider Alive to bypass ping failures)
+            res = gmp.create_target(name=f"Target-{target}-{scan_id}", hosts=[target], alive_test=AliveTest.CONSIDER_ALIVE)
             target_id = res.xpath('//@id')[0]
             
             # Find scan config ("Full and fast")
@@ -125,6 +151,9 @@ def _run_openvas_scan(scan_id, asset_id, target, db, Finding):
             if not config_id:
                 raise Exception("Scan config 'Full and fast' not found")
                 
+            scan.progress = f"Starting OpenVAS task..."
+            db.session.commit()
+                
             # Create task
             res = gmp.create_task(name=f"Task-{scan_id}", config_id=config_id, target_id=target_id)
             task_id = res.xpath('//@id')[0]
@@ -133,15 +162,32 @@ def _run_openvas_scan(scan_id, asset_id, target, db, Finding):
             res = gmp.start_task(task_id)
             report_id = res.xpath('//report_id')[0].text
             
+            scan.progress = f"Polling OpenVAS task..."
+            scan.progress_percent = 20
+            db.session.commit()
+            
             # Poll status
             while True:
                 task = gmp.get_task(task_id)
                 status = task.xpath('//status')[0].text
+                
+                # Fetch progress
+                progress_node = task.xpath('//progress')
+                if progress_node and progress_node[0].text and progress_node[0].text.isdigit():
+                    val = int(progress_node[0].text)
+                    if val > 0:
+                        scan.progress_percent = min(99, max(20, val))
+                        db.session.commit()
+                        
                 if status in ['Done', 'Stopped']:
                     break
                 time.sleep(10)
                 
             # Fetch results
+            scan.progress = f"Parsing OpenVAS results..."
+            scan.progress_percent = 100
+            db.session.commit()
+            
             results = gmp.get_results(filter_string=f"report_id={report_id}")
             for result in results.xpath('//result'):
                 severity_node = result.find('threat')
@@ -171,3 +217,4 @@ def _run_openvas_scan(scan_id, asset_id, target, db, Finding):
             db.session.commit()
     except Exception as e:
         print(f"OpenVAS integration error: {e}")
+        raise e

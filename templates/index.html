@@ -109,13 +109,23 @@
                         </td>
                         <td class="py-4 px-4 flex items-center gap-2 {% if scan.status == 'running' %}text-glacier-blue font-medium{% else %}text-slate-500{% endif %}">
                             {% if scan.status == 'running' %}
-                            <span class="relative flex h-2.5 w-2.5">
-                              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-glacier-blue opacity-75"></span>
-                              <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-glacier-blue"></span>
-                            </span>
-                            Running
+                            <div class="flex flex-col gap-1 w-full max-w-[120px]">
+                                <div class="flex items-center gap-2">
+                                    <span class="relative flex h-2.5 w-2.5">
+                                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-glacier-blue opacity-75"></span>
+                                      <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-glacier-blue"></span>
+                                    </span>
+                                    <span>Running</span>
+                                    <span class="text-[10px] font-mono ml-auto">{{ scan.progress_percent }}%</span>
+                                </div>
+                                <div class="w-full bg-slate-200 rounded-full h-1">
+                                    <div class="bg-glacier-blue h-1 rounded-full" style="width: {{ scan.progress_percent }}%"></div>
+                                </div>
+                            </div>
                             {% elif scan.status == 'queued' %}
                             <span class="w-2.5 h-2.5 rounded-full bg-slate-300 border border-slate-400"></span> Queued
+                            {% elif scan.status == 'completed' %}
+                            <span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span> {{ scan.status|capitalize }} ({{ scan.findings|length }} findings)
                             {% else %}
                             <span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span> {{ scan.status|capitalize }}
                             {% endif %}

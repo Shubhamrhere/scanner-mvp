@@ -23,6 +23,7 @@ services:
       - DATABASE_URL=postgresql://scanner:scanner@db:5432/scanner
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - PYTHONPATH=/app
     depends_on:
       db:
         condition: service_healthy
@@ -52,9 +53,6 @@ services:
       - "9392:9392"
     environment:
       - PUBLIC_HOSTNAME=localhost
-    volumes:
-      - openvas_data:/var/lib/gvm
 
 volumes:
   postgres_data:
-  openvas_data:
