@@ -4,7 +4,7 @@
 
 ## Features
 
-- **Dashboard:** A Premium Neumorphic interface for high-density summary metrics (Assets, Active Scans, Findings, Agent Status).
+- **Dashboard:** A interface for high-density summary metrics (Assets, Active Scans, Findings, Agent Status).
 - **Asset Inventory:** Manage target endpoints (IPs/Hostnames) for scanning.
 - **Scan Scheduling:** Execute internal (via Presence Agent) and external scans asynchronously using Celery and Redis.
 - **Findings Explorer:** Track vulnerabilities found, displaying severity and descriptions.
@@ -34,6 +34,3 @@ The entire environment runs via Docker Compose.
 ### Database & Background Tasks
 - Postgres runs locally on port `5432` internally.
 - Redis handles the celery tasks in the background.
-
-## UI Design
-The UI is styled using **Tailwind CSS** and incorporates a custom *Glacier* "Premium Neumorphic" aesthetic with responsive elements, glassmorphism, and a sleek sidebar.
