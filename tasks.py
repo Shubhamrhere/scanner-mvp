@@ -52,11 +52,16 @@ def execute_scan(scan_id, scan_type, asset_ids):
             scan.status = 'completed'
         except Exception as e:
             import traceback
-            print(f"Error executing scan {scan_id}:\n{traceback.format_exc()}")
+            error_trace = traceback.format_exc()
+            print(f"Error executing scan {scan_id}:\n{error_trace}")
             scan.status = 'failed'
-            scan.error_message = str(e)
+            scan.error_message = f"{str(e)}\n\nTraceback:\n{error_trace}"
             scan.progress = 'Failed'
         finally:
+            # Check findings
+            if scan.status == 'completed' and not scan.findings:
+                scan.progress = 'Completed successfully (0 vulnerabilities found)'
+            
             scan.end_time = datetime.utcnow()
             db.session.commit()
 
@@ -74,8 +79,12 @@ def _run_nuclei_scan(scan_id, asset_id, target, db, Finding):
     ]
     
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        # Use stderr=subprocess.STDOUT to capture all output
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=600)
         
+        if result.returncode != 0:
+            raise Exception(f"Nuclei exited with code {result.returncode}:\n{result.stdout}")
+            
         scan.progress = f"Parsing Nuclei results for {target}..."
         scan.progress_percent = 80
         db.session.commit()
@@ -157,6 +166,9 @@ def _run_openvas_scan(scan_id, asset_id, target, db, Finding):
             # Create task
             res = gmp.create_task(name=f"Task-{scan_id}", config_id=config_id, target_id=target_id)
             task_id = res.xpath('//@id')[0]
+            
+            scan.openvas_task_id = task_id
+            db.session.commit()
             
             # Start task
             res = gmp.start_task(task_id)

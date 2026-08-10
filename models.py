@@ -20,6 +20,8 @@ class Scan(db.Model):
     progress = db.Column(db.String(255), nullable=True)
     progress_percent = db.Column(db.Integer, default=0)
     error_message = db.Column(db.Text, nullable=True)
+    celery_task_id = db.Column(db.String(255), nullable=True)
+    openvas_task_id = db.Column(db.String(255), nullable=True)
     start_time = db.Column(db.DateTime, nullable=True)
     end_time = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

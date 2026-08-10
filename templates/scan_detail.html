@@ -1,6 +1,28 @@
 {% extends "base.html" %}
 {% block title %}Scan SCAN-{{ scan.id }} - Vigilance SOC{% endblock %}
-{% block header_title %}Scan Details: SCAN-{{ scan.id }}{% endblock %}
+{% block header_title %}
+<div class="flex items-center justify-between w-full">
+    <span>Scan Details: SCAN-{{ scan.id }}</span>
+    <div class="flex gap-2">
+        {% if scan.status in ['queued', 'running'] %}
+        <form action="{{ url_for('main.cancel_scan', id=scan.id) }}" method="POST" class="inline">
+            <button type="submit" class="px-4 py-2 bg-error/10 hover:bg-error/20 text-error border border-error/30 rounded-md text-sm font-medium transition-colors">
+                Stop Scan
+            </button>
+        </form>
+        {% endif %}
+        {% if scan.status == 'completed' and scan.findings|length > 0 %}
+        <form action="{{ url_for('main.generate_report') }}" method="POST" class="inline">
+            <input type="hidden" name="scan_id" value="{{ scan.id }}">
+            <input type="hidden" name="format" value="csv">
+            <button type="submit" class="px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 rounded-md text-sm font-medium transition-colors">
+                Export Findings (CSV)
+            </button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
 
 {% block content %}
 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -107,7 +129,20 @@
                     <td class="px-table-cell-padding-x py-table-cell-padding-y text-body-sm font-body-sm text-on-surface-variant truncate max-w-[200px]">{{ finding.description }}</td>
                 </tr>
                 {% else %}
-                <tr><td colspan="4" class="px-table-cell-padding-x py-table-cell-padding-y text-on-surface-variant text-center">No findings reported yet.</td></tr>
+                <tr>
+                    <td colspan="4" class="px-table-cell-padding-x py-table-cell-padding-y text-on-surface-variant text-center">
+                        {% if scan.status == 'completed' %}
+                            <div class="flex flex-col items-center gap-2 py-4">
+                                <span class="material-symbols-outlined text-[32px] text-green-500">check_circle</span>
+                                <span class="text-on-surface font-medium">Scan completed successfully. No vulnerabilities detected.</span>
+                            </div>
+                        {% elif scan.status == 'failed' %}
+                            Scan failed before finding vulnerabilities.
+                        {% else %}
+                            No findings reported yet.
+                        {% endif %}
+                    </td>
+                </tr>
                 {% endfor %}
             </tbody>
         </table>

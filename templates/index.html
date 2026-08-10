@@ -92,6 +92,7 @@
                         <th class="pb-3 px-4 font-semibold">Type</th>
                         <th class="pb-3 px-4 font-semibold">Status</th>
                         <th class="pb-3 px-4 font-semibold text-right">Start Time</th>
+                        <th class="pb-3 px-4 font-semibold text-right">Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -130,12 +131,21 @@
                             <span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span> {{ scan.status|capitalize }}
                             {% endif %}
                         </td>
-                        <td class="py-4 px-4 text-right font-mono text-xs text-slate-500 rounded-r-xl">
+                        <td class="py-4 px-4 text-right font-mono text-xs text-slate-500">
                             {{ scan.start_time.strftime('%m-%d %H:%M') if scan.start_time else '--:--' }}
+                        </td>
+                        <td class="py-4 px-4 text-right rounded-r-xl">
+                            {% if scan.status in ['queued', 'running'] %}
+                            <form action="{{ url_for('main.cancel_scan', id=scan.id) }}" method="POST" class="inline" onclick="event.stopPropagation();">
+                                <button type="submit" class="text-xs px-2 py-1 bg-error/10 text-error hover:bg-error/20 rounded border border-error/30 transition-colors">
+                                    Stop
+                                </button>
+                            </form>
+                            {% endif %}
                         </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="4" class="py-4 px-4 text-slate-500 text-center">No recent scans</td></tr>
+                    <tr><td colspan="5" class="py-4 px-4 text-slate-500 text-center">No recent scans</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

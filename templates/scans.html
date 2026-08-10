@@ -19,10 +19,10 @@
             <thead class="text-xs text-slate-500 uppercase tracking-wider sticky top-0 bg-transparent z-10">
                 <tr>
                     <th class="pb-3 px-4 font-semibold">Scan ID</th>
-                    <th class="pb-3 px-4 font-semibold">Type</th>
-                    <th class="pb-3 px-4 font-semibold">Status</th>
-                    <th class="pb-3 px-4 font-semibold text-right">Start Time</th>
-                    <th class="pb-3 px-4 font-semibold text-right">End Time</th>
+                    <th class="py-3 px-4 font-label-caps text-label-caps uppercase tracking-wider text-slate-500 font-medium">Status</th>
+                    <th class="py-3 px-4 text-right font-label-caps text-label-caps uppercase tracking-wider text-slate-500 font-medium">Started</th>
+                    <th class="py-3 px-4 text-right font-label-caps text-label-caps uppercase tracking-wider text-slate-500 font-medium">Ended</th>
+                    <th class="py-3 px-4 text-right font-label-caps text-label-caps uppercase tracking-wider text-slate-500 font-medium">Action</th>
                 </tr>
             </thead>
             <tbody>
@@ -64,12 +64,21 @@
                     <td class="py-4 px-4 text-right font-mono text-xs text-slate-500">
                         {{ scan.start_time.strftime('%Y-%m-%d %H:%M:%S') if scan.start_time else '--:--' }}
                     </td>
-                    <td class="py-4 px-4 text-right font-mono text-xs text-slate-500 rounded-r-xl">
+                    <td class="py-4 px-4 text-right font-mono text-xs text-slate-500">
                         {{ scan.end_time.strftime('%Y-%m-%d %H:%M:%S') if scan.end_time else '--:--' }}
+                    </td>
+                    <td class="py-4 px-4 text-right rounded-r-xl">
+                        {% if scan.status in ['queued', 'running'] %}
+                        <form action="{{ url_for('main.cancel_scan', id=scan.id) }}" method="POST" class="inline" onclick="event.stopPropagation();">
+                            <button type="submit" class="text-xs px-2 py-1 bg-error/10 text-error hover:bg-error/20 rounded border border-error/30 transition-colors">
+                                Stop
+                            </button>
+                        </form>
+                        {% endif %}
                     </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="5" class="py-4 px-4 text-slate-500 text-center">No scans found</td></tr>
+                <tr><td colspan="6" class="py-4 px-4 text-slate-500 text-center">No scans found</td></tr>
                 {% endfor %}
             </tbody>
         </table>

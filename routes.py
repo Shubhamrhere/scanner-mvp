@@ -60,7 +60,9 @@ def new_scan():
         
         # Dispatch real background scan task via Celery
         from tasks import execute_scan
-        execute_scan.delay(scan.id, scan_type, asset_ids)
+        task = execute_scan.delay(scan.id, scan_type, asset_ids)
+        scan.celery_task_id = task.id
+        db.session.commit()
         
         return redirect(url_for('main.scans'))
         
@@ -71,6 +73,40 @@ def new_scan():
 def scan_detail(id):
     scan = Scan.query.get_or_404(id)
     return render_template('scan_detail.html', scan=scan)
+
+@bp.route('/scans/<int:id>/cancel', methods=['POST'])
+def cancel_scan(id):
+    scan = Scan.query.get_or_404(id)
+    if scan.status in ['queued', 'running']:
+        # Revoke celery task
+        if scan.celery_task_id:
+            from celery.app.control import Control
+            from tasks import celery
+            Control(celery).revoke(scan.celery_task_id, terminate=True, signal='SIGTERM')
+            
+        # Stop openvas task
+        if scan.openvas_task_id:
+            try:
+                from gvm.connections import TLSConnection
+                from gvm.protocols.gmp import Gmp
+                from gvm.transforms import EtreeTransform
+                connection = TLSConnection(hostname='openvas', port=9390)
+                transform = EtreeTransform()
+                with Gmp(connection=connection, transform=transform) as gmp:
+                    gmp.authenticate('admin', 'admin')
+                    gmp.stop_task(scan.openvas_task_id)
+            except Exception as e:
+                print(f"Failed to stop OpenVAS task: {e}")
+                
+        scan.status = 'cancelled'
+        scan.progress = 'Scan cancelled by user.'
+        scan.end_time = datetime.utcnow()
+        db.session.commit()
+        flash('Scan cancelled successfully.', 'info')
+    else:
+        flash('Scan cannot be cancelled in its current state.', 'error')
+        
+    return redirect(url_for('main.scan_detail', id=scan.id))
 
 @bp.route('/findings')
 def findings():
@@ -85,9 +121,15 @@ def reports():
 @bp.route('/reports/generate', methods=['POST'])
 def generate_report():
     report_format = request.form.get('format', 'csv')
-    findings = Finding.query.order_by(Finding.created_at.desc()).all()
+    scan_id = request.form.get('scan_id')
     
-    report = Report(type='Technical Findings', format=report_format, status='completed')
+    query = Finding.query.order_by(Finding.created_at.desc())
+    if scan_id:
+        query = query.filter_by(scan_id=scan_id)
+    findings = query.all()
+    
+    report_type = f'Scan {scan_id} Findings' if scan_id else 'Technical Findings'
+    report = Report(type=report_type, format=report_format, status='completed')
     db.session.add(report)
     db.session.commit()
     
