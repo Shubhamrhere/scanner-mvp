@@ -10,6 +10,8 @@ services:
       - DATABASE_URL=postgresql://scanner:scanner@db:5432/scanner
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
+    volumes:
+      - ./:/app
     depends_on:
       db:
         condition: service_healthy
@@ -24,6 +26,9 @@ services:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
       - PYTHONPATH=/app
+    volumes:
+      - ./:/app
+      - gvmd_socket:/run/gvmd
     depends_on:
       db:
         condition: service_healthy
@@ -53,6 +58,10 @@ services:
       - "9392:9392"
     environment:
       - PUBLIC_HOSTNAME=localhost
+      - SKIPSYNC=true
+    volumes:
+      - gvmd_socket:/run/gvmd
 
 volumes:
   postgres_data:
+  gvmd_socket:

@@ -87,10 +87,10 @@ def cancel_scan(id):
         # Stop openvas task
         if scan.openvas_task_id:
             try:
-                from gvm.connections import TLSConnection
+                from gvm.connections import UnixSocketConnection
                 from gvm.protocols.gmp import Gmp
                 from gvm.transforms import EtreeTransform
-                connection = TLSConnection(hostname='openvas', port=9390)
+                connection = UnixSocketConnection(path="/run/gvmd/gvmd.sock")
                 transform = EtreeTransform()
                 with Gmp(connection=connection, transform=transform) as gmp:
                     gmp.authenticate('admin', 'admin')
