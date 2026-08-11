@@ -65,16 +65,29 @@ def execute_scan(scan_id, scan_type, asset_ids):
             scan.end_time = datetime.utcnow()
             db.session.commit()
 
+def _resolve_nuclei_binary():
+    import shutil
+    exe = shutil.which('nuclei') or shutil.which('nuclei.exe')
+    if not exe:
+        return 'nuclei'
+    head = os.path.dirname(exe)
+    if os.path.basename(head).lower() == 'shims':
+        candidate = os.path.join(head, 'apps', 'nuclei', 'current', 'nuclei.exe')
+        if os.path.isfile(candidate):
+            return candidate
+    return exe
+
 def _run_nuclei_scan(scan_id, asset_id, target, db, Finding):
+    from models import Scan
     scan = Scan.query.get(scan_id)
     scan.progress = f"Running Nuclei on {target}..."
     scan.progress_percent = 20
     db.session.commit()
-    
+
     cmd = [
-        'nuclei',
+        _resolve_nuclei_binary(),
         '-u', target,
-        '-j', 
+        '-j',
         '-silent'
     ]
     
@@ -124,6 +137,7 @@ def _run_nuclei_scan(scan_id, asset_id, target, db, Finding):
         raise e
 
 def _run_openvas_scan(scan_id, asset_id, target, db, Finding):
+    from models import Scan
     from gvm.connections import TLSConnection
     from gvm.protocols.gmp import Gmp
     from gvm.transforms import EtreeTransform

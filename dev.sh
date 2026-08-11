@@ -32,14 +32,18 @@ WORKER_LOG="${LOG_DIR}/worker.log"
 PID_FILE="${LOG_DIR}/worker.pid"
 
 # Infra connection settings (override via env if needed)
+# Note: default DB_PORT is 5433, not 5432, to avoid clashing with a
+# locally installed PostgreSQL service that may already use 5432.
 DB_USER="${DB_USER:-scanner}"
 DB_PASSWORD="${DB_PASSWORD:-scanner}"
 DB_NAME="${DB_NAME:-scanner}"
-DB_PORT="${DB_PORT:-5432}"
+DB_PORT="${DB_PORT:-5433}"
 REDIS_PORT="${REDIS_PORT:-6379}"
 GMP_HOST="${GMP_HOST:-localhost}"
 
-COMPOSE="docker compose -f ${ROOT_DIR}/docker-compose.yml -f ${ROOT_DIR}/docker-compose.dev.yml"
+compose() {
+    docker compose -f "${ROOT_DIR}/docker-compose.yml" -f "${ROOT_DIR}/docker-compose.dev.yml" "$@"
+}
 
 export ROOT_DIR
 export DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@localhost:${DB_PORT}/${DB_NAME}"
@@ -84,6 +88,31 @@ if [[ "${IS_WINDOWS}" == "1" ]]; then
     CELERY_POOL="--pool=solo"
 fi
 
+# Find a host Python that pip can install binary wheels for.
+# On Windows, plain `python` may be an MSYS2/MinGW build whose platform tag
+# (e.g. mingw_x86_64_ucrt_gnu) does not match win_amd64 wheels, forcing source
+# builds. Prefer the `py` launcher with a CPython 3.12/3.11 if available.
+find_python_cmd() {
+    if [[ "${IS_WINDOWS}" == "1" ]] && command -v py >/dev/null 2>&1; then
+        local ver
+        for ver in -3.12 -3.11 -3.13 -3.14 -3; do
+            if py "${ver}" -c "import sysconfig" >/dev/null 2>&1 \
+                && [[ "$(py "${ver}" -c "import sysconfig; print(sysconfig.get_platform())")" == win* ]]; then
+                printf 'py %s' "${ver}"
+                return 0
+            fi
+        done
+    fi
+    printf '%s' "python"
+}
+
+create_venv() {
+    local py_cmd
+    py_cmd="$(find_python_cmd)"
+    info "Creating virtualenv at ${VENV_DIR} using: ${py_cmd} ..."
+    ${py_cmd} -m venv "${VENV_DIR}"
+}
+
 require_venv() {
     if [[ -z "$(venv_python)" ]]; then
         fail "venv not found. Run './dev.sh setup' first."
@@ -101,7 +130,7 @@ import time
 import psycopg2
 
 url = os.environ["DATABASE_URL"]
-for _ in range(30):
+for _ in range(60):
     try:
         psycopg2.connect(url).close()
         print("Postgres is ready")
@@ -115,7 +144,7 @@ PY
 
 ensure_infra() {
     local running
-    running="$(${COMPOSE} ps --services --status running 2>/dev/null || true)"
+    running="$(compose ps --services --status running 2>/dev/null || true)"
     if [[ "${running}" != *"db"* ]]; then
         warn "Infra containers are not running. Starting them ..."
         cmd_up
@@ -133,8 +162,7 @@ stop_worker() {
 }
 
 cmd_setup() {
-    info "Creating virtualenv at ${VENV_DIR} ..."
-    python -m venv "${VENV_DIR}"
+    create_venv
     local py; py="$(venv_python)"
     "${py:-python}" -m pip install --upgrade pip
     "${py:-python}" -m pip install -r "${ROOT_DIR}/requirements.txt"
@@ -146,7 +174,7 @@ cmd_setup() {
 
 cmd_up() {
     info "Starting infra (db, redis, openvas) ..."
-    ${COMPOSE} up -d db redis openvas
+    compose up -d db redis openvas
     wait_for_db
     ok "Infra is up. Run './dev.sh dev' (or './dev.sh web' + './dev.sh worker')."
 }
@@ -163,8 +191,8 @@ cmd_worker() {
     require_venv
     local py; py="$(venv_python)"
     ensure_infra
-    info "Starting Celery worker (auto-reload on)"
-    exec "${py}" -m celery -A tasks.celery worker --loglevel=info --autoreload ${CELERY_POOL}
+    info "Starting Celery worker"
+    exec "${py}" -m celery -A tasks.celery worker --loglevel=info ${CELERY_POOL}
 }
 
 cmd_dev() {
@@ -173,7 +201,7 @@ cmd_dev() {
     ensure_infra
     mkdir -p "${LOG_DIR}"
     info "Starting Celery worker in background (logs -> ${WORKER_LOG})"
-    "${py}" -m celery -A tasks.celery worker --loglevel=info --autoreload ${CELERY_POOL} >"${WORKER_LOG}" 2>&1 &
+    "${py}" -m celery -A tasks.celery worker --loglevel=info ${CELERY_POOL} >"${WORKER_LOG}" 2>&1 &
     local worker_pid=$!
     echo "${worker_pid}" > "${PID_FILE}"
     trap 'warn "Stopping background worker"; kill "$(cat "${PID_FILE}")" 2>/dev/null || true; rm -f "${PID_FILE}";' EXIT
@@ -189,7 +217,7 @@ cmd_logs() {
         tail_pid=$!
     fi
     info "Following infra logs (Ctrl+C to stop)"
-    ${COMPOSE} logs -f
+    compose logs -f
     if [[ -n "${tail_pid}" ]]; then
         kill "${tail_pid}" 2>/dev/null || true
     fi
@@ -231,24 +259,24 @@ PY
 }
 
 cmd_status() {
-    ${COMPOSE} ps
+    compose ps
 }
 
 cmd_stop() {
     stop_worker
-    ${COMPOSE} stop
+    compose stop
     ok "Stopped. Use './dev.sh up' to start again."
 }
 
 cmd_down() {
     stop_worker
-    ${COMPOSE} down
+    compose down
     ok "Containers removed. Data volumes preserved."
 }
 
 cmd_clean() {
     stop_worker
-    ${COMPOSE} down -v
+    compose down -v
     rm -rf "${VENV_DIR}" "${LOG_DIR}"
     ok "Cleaned containers, volumes, venv and logs."
 }
