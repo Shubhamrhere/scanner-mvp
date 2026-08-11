@@ -34,3 +34,26 @@ The entire environment runs via Docker Compose.
 ### Database & Background Tasks
 - Postgres runs locally on port `5432` internally.
 - Redis handles the celery tasks in the background.
+
+## Development
+
+For faster iteration, the app and Celery worker run directly on the host with
+hot-reload while Postgres, Redis and OpenVAS stay in Docker:
+
+```bash
+./dev.sh setup   # first time: venv + install deps
+./dev.sh dev     # infra + background worker + Flask (hot-reload on :5000)
+./dev.sh logs    # follow infra and worker logs (in another terminal)
+```
+
+Other commands: `./dev.sh web`, `./dev.sh worker`, `./dev.sh test`,
+`./dev.sh stop`, `./dev.sh down`, `./dev.sh clean`. Run `./dev.sh help`
+for details.
+
+Notes:
+- Dev infra ports (`5432`, `6379`, `9390`, `9392`) are exposed to the host via
+  `docker-compose.dev.yml`.
+- In dev the app connects to OpenVAS GMP at `localhost:9390`
+  (`GVM_HOST=localhost`); inside Docker it still uses the `openvas` hostname.
+- Connection settings are configurable via env: `DB_PORT`, `REDIS_PORT`,
+  `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `GMP_HOST`.

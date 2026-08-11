@@ -135,7 +135,10 @@ def _run_openvas_scan(scan_id, asset_id, target, db, Finding):
     # We attempt to connect to OpenVAS container locally
     try:
         from gvm.protocols.gmp.requests.v224 import AliveTest
-        connection = TLSConnection(hostname='openvas', port=9390)
+        connection = TLSConnection(
+            hostname=os.environ.get('GVM_HOST', 'openvas'),
+            port=int(os.environ.get('GVM_PORT', '9390'))
+        )
         transform = EtreeTransform()
         
         with Gmp(connection=connection, transform=transform) as gmp:
