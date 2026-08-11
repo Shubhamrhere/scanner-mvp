@@ -42,10 +42,10 @@ def execute_scan(scan_id, scan_type, asset_ids):
                     
                 if scan_type == 'external':
                     # Route to OpenVAS API
-                    _run_openvas_scan(scan_id, asset_id, target, db, Finding)
+                    _run_openvas_scan(scan, asset_id, target, db, Finding)
                 else:
                     # Route to Nuclei CLI
-                    _run_nuclei_scan(scan_id, asset_id, target, db, Finding)
+                    _run_nuclei_scan(scan, asset_id, target, db, Finding)
                     
             scan.progress_percent = 100
             scan.progress = 'Completed'
@@ -87,7 +87,9 @@ def _run_nuclei_scan(scan_id, asset_id, target, db, Finding):
     cmd = [
         _resolve_nuclei_binary(),
         '-u', target,
-        '-j',
+        '-tags', 'cve,misconfig',
+        '-severity', 'critical,high,medium',
+        '-j', 
         '-silent'
     ]
     
@@ -117,7 +119,7 @@ def _run_nuclei_scan(scan_id, asset_id, target, db, Finding):
                     severity = 'Informational'
                     
                 finding = Finding(
-                    scan_id=scan_id,
+                    scan_id=scan.id,
                     asset_id=asset_id,
                     severity=severity,
                     cve=info.get('classification', {}).get('cve-id', ''),
@@ -141,47 +143,88 @@ def _run_openvas_scan(scan_id, asset_id, target, db, Finding):
     from gvm.connections import TLSConnection
     from gvm.protocols.gmp import Gmp
     from gvm.transforms import EtreeTransform
-    
-    scan = Scan.query.get(scan_id)
     scan.progress = f"Connecting to OpenVAS for {target}..."
     db.session.commit()
     
+    # Wait for OpenVAS socket to be ready (up to 15 minutes)
+    socket_path = "/run/gvmd/gvmd.sock"
+    max_wait = 900
+    waited = 0
+    while not os.path.exists(socket_path) and waited < max_wait:
+        time.sleep(10)
+        waited += 10
+        scan.progress = f"Waiting for OpenVAS to initialize ({waited}/{max_wait}s)..."
+        db.session.commit()
+        
+    if not os.path.exists(socket_path):
+        raise Exception(f"OpenVAS socket not found at {socket_path} after {max_wait} seconds.")
+        
     # We attempt to connect to OpenVAS container locally
     try:
         from gvm.protocols.gmp.requests.v224 import AliveTest
-        connection = TLSConnection(
-            hostname=os.environ.get('GVM_HOST', 'openvas'),
-            port=int(os.environ.get('GVM_PORT', '9390'))
-        )
+        connection = UnixSocketConnection(path=socket_path)
+        
+        # Wait until the connection is actually accepted
+        connected = False
+        connect_wait = 0
+        while not connected and connect_wait < 900:
+            try:
+                connection.connect()
+                connection.disconnect()
+                connected = True
+            except Exception as e:
+                time.sleep(10)
+                connect_wait += 10
+                scan.progress = f"Waiting for OpenVAS connection ({connect_wait}/900s)..."
+                db.session.commit()
+                
+        if not connected:
+            raise Exception(f"Could not connect to OpenVAS socket after 900 seconds.")
+
         transform = EtreeTransform()
         
         with Gmp(connection=connection, transform=transform) as gmp:
             gmp.authenticate('admin', 'admin')
+            # 1. Get Port List
+            res = gmp.get_port_lists(filter_string="name=All IANA assigned TCP")
+            port_lists = res.xpath('port_list/@id')
+            if not port_lists:
+                raise Exception("OpenVAS Error: Could not find port list 'All IANA assigned TCP'")
+            port_list_id = port_lists[0]
+
+            # 2. Get Config
+            res = gmp.get_scan_configs(filter_string="name=Base")
+            configs = res.xpath('config/@id')
+            if not configs:
+                raise Exception("OpenVAS Error: Could not find scan config 'Base'")
+            config_id = configs[0]
+            
+            # 3. Get Scanner
+            res = gmp.get_scanners(filter_string="name=CVE")
+            scanners = res.xpath('scanner/@id')
+            if not scanners:
+                raise Exception("OpenVAS Error: Could not find scanner 'CVE'")
+            scanner_id = scanners[0]
             
             scan.progress = f"Creating OpenVAS target {target}..."
             scan.progress_percent = 10
             db.session.commit()
             
             # Create target (Consider Alive to bypass ping failures)
-            res = gmp.create_target(name=f"Target-{target}-{scan_id}", hosts=[target], alive_test=AliveTest.CONSIDER_ALIVE)
+            res = gmp.create_target(name=f"Target-{target}-{scan.id}", hosts=[target], port_list_id=port_list_id, alive_test=AliveTest.CONSIDER_ALIVE)
+            if res.get('status') != '201':
+                raise Exception(f"OpenVAS Error creating target: {res.get('status_text')}")
+                
             target_id = res.xpath('//@id')[0]
-            
-            # Find scan config ("Full and fast")
-            configs = gmp.get_scan_configs()
-            config_id = None
-            for config in configs.xpath('//config'):
-                if 'Full and fast' in config.find('name').text:
-                    config_id = config.get('id')
-                    break
-            
-            if not config_id:
-                raise Exception("Scan config 'Full and fast' not found")
-                
-            scan.progress = f"Starting OpenVAS task..."
+            scan.progress = "Creating OpenVAS task..."
+            scan.progress_percent = 15
             db.session.commit()
-                
+            
             # Create task
-            res = gmp.create_task(name=f"Task-{scan_id}", config_id=config_id, target_id=target_id)
+            res = gmp.create_task(name=f"Task-{target}-{scan.id}", config_id=config_id, target_id=target_id, scanner_id=scanner_id)
+            if res.get('status') != '201':
+                raise Exception(f"OpenVAS Error creating task: {res.get('status_text')}")
+                
             task_id = res.xpath('//@id')[0]
             
             scan.openvas_task_id = task_id
@@ -189,6 +232,9 @@ def _run_openvas_scan(scan_id, asset_id, target, db, Finding):
             
             # Start task
             res = gmp.start_task(task_id)
+            if res.get('status') != '202':
+                raise Exception(f"OpenVAS Error starting task: {res.get('status_text')}")
+            
             report_id = res.xpath('//report_id')[0].text
             
             scan.progress = f"Polling OpenVAS task..."
@@ -210,6 +256,8 @@ def _run_openvas_scan(scan_id, asset_id, target, db, Finding):
                         
                 if status in ['Done', 'Stopped']:
                     break
+                elif status in ['Interrupted', 'Failed', 'Error']:
+                    raise Exception(f"OpenVAS task failed with status: {status}")
                 time.sleep(10)
                 
             # Fetch results
@@ -234,7 +282,7 @@ def _run_openvas_scan(scan_id, asset_id, target, db, Finding):
                         cve = cve_node.text
                         
                 finding = Finding(
-                    scan_id=scan_id,
+                    scan_id=scan.id,
                     asset_id=asset_id,
                     severity=severity,
                     cve=cve,
