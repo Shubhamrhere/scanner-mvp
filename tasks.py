@@ -170,31 +170,46 @@ def _run_openvas_scan(scan, asset_id, target, db, Finding):
         
         with Gmp(connection=connection, transform=transform) as gmp:
             gmp.authenticate('admin', 'admin')
+            # 1. Get Port List
+            res = gmp.get_port_lists(filter_string="name=All IANA assigned TCP")
+            port_lists = res.xpath('port_list/@id')
+            if not port_lists:
+                raise Exception("OpenVAS Error: Could not find port list 'All IANA assigned TCP'")
+            port_list_id = port_lists[0]
+
+            # 2. Get Config
+            res = gmp.get_scan_configs(filter_string="name=Base")
+            configs = res.xpath('config/@id')
+            if not configs:
+                raise Exception("OpenVAS Error: Could not find scan config 'Base'")
+            config_id = configs[0]
+            
+            # 3. Get Scanner
+            res = gmp.get_scanners(filter_string="name=CVE")
+            scanners = res.xpath('scanner/@id')
+            if not scanners:
+                raise Exception("OpenVAS Error: Could not find scanner 'CVE'")
+            scanner_id = scanners[0]
             
             scan.progress = f"Creating OpenVAS target {target}..."
             scan.progress_percent = 10
             db.session.commit()
             
             # Create target (Consider Alive to bypass ping failures)
-            res = gmp.create_target(name=f"Target-{target}-{scan.id}", hosts=[target], alive_test=AliveTest.CONSIDER_ALIVE)
+            res = gmp.create_target(name=f"Target-{target}-{scan.id}", hosts=[target], port_list_id=port_list_id, alive_test=AliveTest.CONSIDER_ALIVE)
+            if res.get('status') != '201':
+                raise Exception(f"OpenVAS Error creating target: {res.get('status_text')}")
+                
             target_id = res.xpath('//@id')[0]
-            
-            # Find scan config ("Full and fast")
-            configs = gmp.get_scan_configs()
-            config_id = None
-            for config in configs.xpath('//config'):
-                if 'Full and fast' in config.find('name').text:
-                    config_id = config.get('id')
-                    break
-            
-            if not config_id:
-                raise Exception("Scan config 'Full and fast' not found")
-                
-            scan.progress = f"Starting OpenVAS task..."
+            scan.progress = "Creating OpenVAS task..."
+            scan.progress_percent = 15
             db.session.commit()
-                
+            
             # Create task
-            res = gmp.create_task(name=f"Task-{scan.id}", config_id=config_id, target_id=target_id)
+            res = gmp.create_task(name=f"Task-{target}-{scan.id}", config_id=config_id, target_id=target_id, scanner_id=scanner_id)
+            if res.get('status') != '201':
+                raise Exception(f"OpenVAS Error creating task: {res.get('status_text')}")
+                
             task_id = res.xpath('//@id')[0]
             
             scan.openvas_task_id = task_id
@@ -202,6 +217,9 @@ def _run_openvas_scan(scan, asset_id, target, db, Finding):
             
             # Start task
             res = gmp.start_task(task_id)
+            if res.get('status') != '202':
+                raise Exception(f"OpenVAS Error starting task: {res.get('status_text')}")
+            
             report_id = res.xpath('//report_id')[0].text
             
             scan.progress = f"Polling OpenVAS task..."
