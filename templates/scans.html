@@ -19,7 +19,9 @@
             <thead class="text-xs text-slate-500 uppercase tracking-wider sticky top-0 bg-transparent z-10">
                 <tr>
                     <th class="pb-3 px-4 font-semibold">Scan ID</th>
+                    <th class="py-3 px-4 font-label-caps text-label-caps uppercase tracking-wider text-slate-500 font-medium">Type</th>
                     <th class="py-3 px-4 font-label-caps text-label-caps uppercase tracking-wider text-slate-500 font-medium">Status</th>
+                    <th class="py-3 px-4 font-label-caps text-label-caps uppercase tracking-wider text-slate-500 font-medium">Engines</th>
                     <th class="py-3 px-4 text-right font-label-caps text-label-caps uppercase tracking-wider text-slate-500 font-medium">Started</th>
                     <th class="py-3 px-4 text-right font-label-caps text-label-caps uppercase tracking-wider text-slate-500 font-medium">Ended</th>
                     <th class="py-3 px-4 text-right font-label-caps text-label-caps uppercase tracking-wider text-slate-500 font-medium">Action</th>
@@ -38,27 +40,62 @@
                         <span class="px-2.5 py-1 text-[10px] font-bold text-glacier-yellow border border-glacier-yellow/30 rounded-md bg-glacier-yellow/10 uppercase tracking-wide">External</span>
                         {% endif %}
                     </td>
-                    <td class="py-4 px-4 flex items-center gap-2 {% if scan.status == 'running' %}text-glacier-blue font-medium{% else %}text-slate-500{% endif %}">
+                    {# ── Overall status column ── #}
+                    <td class="py-4 px-4 {% if scan.status == 'running' %}text-glacier-blue font-medium{% else %}text-slate-500{% endif %}">
                         {% if scan.status == 'running' %}
-                        <div class="flex flex-col gap-1 w-full max-w-[120px]">
-                            <div class="flex items-center gap-2">
-                                <span class="relative flex h-2.5 w-2.5">
-                                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-glacier-blue opacity-75"></span>
-                                    <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-glacier-blue"></span>
-                                </span>
-                                <span>Running</span>
-                                <span class="text-[10px] font-mono ml-auto">{{ scan.progress_percent }}%</span>
-                            </div>
-                            <div class="w-full bg-slate-200 rounded-full h-1">
-                                <div class="bg-glacier-blue h-1 rounded-full" style="width: {{ scan.progress_percent }}%"></div>
-                            </div>
+                        <div class="flex items-center gap-2">
+                            <span class="relative flex h-2.5 w-2.5">
+                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-glacier-blue opacity-75"></span>
+                                <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-glacier-blue"></span>
+                            </span>
+                            <span>Running</span>
                         </div>
                         {% elif scan.status == 'queued' %}
-                        <span class="w-2.5 h-2.5 rounded-full bg-slate-300 border border-slate-400"></span> Queued
+                        <div class="flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-slate-300 border border-slate-400"></span>
+                            Queued
+                        </div>
                         {% elif scan.status == 'completed' %}
-                        <span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span> {{ scan.status|capitalize }} ({{ scan.findings|length }} findings)
+                        <div class="flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+                            Completed
+                        </div>
                         {% else %}
-                        <span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span> {{ scan.status|capitalize }}
+                        <div class="flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+                            {{ scan.status | capitalize }}
+                        </div>
+                        {% endif %}
+                    </td>
+                    {# ── Per-engine mini-status column ── #}
+                    <td class="py-4 px-4">
+                        {% if scan.engines %}
+                        <div class="flex flex-col gap-1">
+                            {% for se in scan.engines %}
+                            <div class="flex items-center gap-1.5 text-[11px]">
+                                <span class="font-mono font-semibold text-slate-600 w-14">{{ se.engine | upper }}</span>
+                                {% if se.status == 'running' %}
+                                <span class="px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 border border-blue-200 font-medium">{{ se.progress_pct or 0 }}%</span>
+                                {% elif se.status == 'completed' %}
+                                {% if se.engine == 'nuclei' %}
+                                {% set fc = scan.findings | selectattr('engine', 'equalto', 'nuclei') | list | length %}
+                                {% else %}
+                                {% set fc = scan.findings | selectattr('engine', 'equalto', 'openvas') | list | length %}
+                                {% endif %}
+                                <span class="px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-200 font-medium">
+                                    ✓ {{ fc }} findings
+                                </span>
+                                {% elif se.status == 'failed' %}
+                                <span class="px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-200 font-medium">✕ Failed</span>
+                                {% else %}
+                                <span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200 font-medium">Queued</span>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        {# Legacy scan #}
+                        <span class="text-[11px] text-slate-400 italic">legacy</span>
                         {% endif %}
                     </td>
                     <td class="py-4 px-4 text-right font-mono text-xs text-slate-500">
@@ -78,7 +115,7 @@
                     </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="6" class="py-4 px-4 text-slate-500 text-center">No scans found</td></tr>
+                <tr><td colspan="7" class="py-4 px-4 text-slate-500 text-center">No scans found</td></tr>
                 {% endfor %}
             </tbody>
         </table>
