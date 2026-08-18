@@ -22,17 +22,21 @@
                 {% for finding in findings %}
                 <tr class="glacier-recessed-sm bg-white/30 hover:bg-white/60 transition-colors">
                     <td class="py-4 px-2 rounded-l-xl">
-                        {% if finding.severity == 'Critical' or finding.severity == 'High' %}
+                        {% if finding.severity|lower == 'critical' or finding.severity|lower == 'high' %}
                         <div class="w-1.5 h-10 bg-glacier-red rounded-full mx-auto shadow-[0_0_8px_rgba(239,68,68,0.5)]"></div>
-                        {% elif finding.severity == 'Medium' %}
+                        {% elif finding.severity|lower == 'medium' %}
                         <div class="w-1.5 h-10 bg-glacier-yellow rounded-full mx-auto shadow-[0_0_8px_rgba(245,158,11,0.5)]"></div>
                         {% else %}
                         <div class="w-1.5 h-10 bg-slate-400 rounded-full mx-auto"></div>
                         {% endif %}
                     </td>
-                    <td class="py-4 px-4 font-mono text-xs {% if finding.severity == 'Critical' or finding.severity == 'High' %}text-glacier-red{% elif finding.severity == 'Medium' %}text-glacier-yellow{% else %}text-slate-500{% endif %} font-medium">{{ finding.cve }}</td>
+                    <td class="py-4 px-4 font-mono text-xs {% if finding.severity|lower == 'critical' or finding.severity|lower == 'high' %}text-glacier-red{% elif finding.severity|lower == 'medium' %}text-glacier-yellow{% else %}text-slate-500{% endif %} font-medium">{{ finding.cve }}</td>
                     <td class="py-4 px-4 font-mono text-xs text-slate-700 bg-slate-100/50 my-2 rounded-md inline-block mt-3 border border-white">{{ finding.asset.hostname or finding.asset.ip_address }}</td>
-                    <td class="py-4 px-4 text-xs text-slate-600 truncate max-w-[300px]" title="{{ finding.description }}">{{ finding.description }}</td>
+                    <td class="py-4 px-4 text-xs text-slate-600">
+                        <button type="button" onclick="openFindingDetail({{ loop.index0 }})" class="text-left truncate max-w-[300px] block text-slate-600 hover:text-glacier-blue transition-colors underline decoration-dotted underline-offset-2 cursor-pointer" title="View full finding">
+                            {{- finding.description or 'No description' -}}
+                        </button>
+                    </td>
                     <td class="py-4 px-4 text-right font-mono text-xs text-slate-500 rounded-r-xl">
                         {{ finding.created_at.strftime('%Y-%m-%d %H:%M') if finding.created_at else '--:--' }}
                     </td>
@@ -44,4 +48,66 @@
         </table>
     </div>
 </section>
+
+<div id="finding-detail-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-6">
+    <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onclick="closeFindingDetail()"></div>
+    <div class="relative bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] flex flex-col overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-200 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <h3 class="font-semibold text-slate-800">Finding Detail</h3>
+                <span id="detail-modal-severity" class="text-xs font-bold px-2 py-0.5 rounded bg-slate-200 text-slate-600 uppercase"></span>
+            </div>
+            <button type="button" onclick="closeFindingDetail()" class="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
+        </div>
+        <div class="p-6 overflow-auto flex flex-col gap-4">
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <div class="text-xs uppercase tracking-wider text-slate-400 font-semibold">CVE</div>
+                    <div id="detail-modal-cve" class="font-mono text-sm text-slate-700"></div>
+                </div>
+                <div>
+                    <div class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Detected On</div>
+                    <div id="detail-modal-detected" class="font-mono text-sm text-slate-700"></div>
+                </div>
+                <div>
+                    <div class="text-xs uppercase tracking-wider text-slate-400 font-semibold">Asset</div>
+                    <div id="detail-modal-asset" class="font-mono text-sm text-slate-700"></div>
+                </div>
+                <div>
+                    <div class="text-xs uppercase tracking-wider text-slate-400 font-semibold">IP Address</div>
+                    <div id="detail-modal-ip" class="font-mono text-sm text-slate-700"></div>
+                </div>
+            </div>
+            <div>
+                <div class="text-xs uppercase tracking-wider text-slate-400 font-semibold mb-1">Description</div>
+                <p id="detail-modal-description" class="text-sm text-slate-700 whitespace-pre-wrap bg-slate-50 border border-slate-200 rounded-lg p-3"></p>
+            </div>
+            <div>
+                <div class="text-xs uppercase tracking-wider text-slate-400 font-semibold mb-1">Recommendation</div>
+                <p id="detail-modal-recommendation" class="text-sm text-slate-700 whitespace-pre-wrap bg-slate-50 border border-slate-200 rounded-lg p-3"></p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const FINDING_DETAILS = {{ finding_details|tojson }};
+
+function openFindingDetail(idx) {
+    const f = FINDING_DETAILS[idx];
+    if (!f) return;
+    document.getElementById('detail-modal-severity').textContent = f.severity || 'N/A';
+    document.getElementById('detail-modal-cve').textContent = f.cve || 'N/A';
+    document.getElementById('detail-modal-asset').textContent = f.asset || 'N/A';
+    document.getElementById('detail-modal-ip').textContent = f.ip || '—';
+    document.getElementById('detail-modal-description').textContent = f.description || 'No description provided.';
+    document.getElementById('detail-modal-recommendation').textContent = f.recommendation || 'No recommendation provided.';
+    document.getElementById('detail-modal-detected').textContent = f.detected || '—';
+    document.getElementById('finding-detail-modal').classList.remove('hidden');
+}
+
+function closeFindingDetail() {
+    document.getElementById('finding-detail-modal').classList.add('hidden');
+}
+</script>
 {% endblock %}

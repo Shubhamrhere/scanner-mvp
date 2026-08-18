@@ -3,8 +3,8 @@ from app import db
 
 class Asset(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    hostname = db.Column(db.String(255), nullable=True)
-    ip_address = db.Column(db.String(50), nullable=False)
+    hostname = db.Column(db.String(255), nullable=True) # web target (Nuclei)
+    ip_address = db.Column(db.String(50), nullable=True) # network target (OpenVAS)
     environment = db.Column(db.String(50), nullable=True) # e.g., Production, Staging
     criticality = db.Column(db.String(50), nullable=True) # e.g., High, Medium, Low
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -39,7 +39,7 @@ class Finding(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     scan_id = db.Column(db.Integer, db.ForeignKey('scan.id'), nullable=False)
     asset_id = db.Column(db.Integer, db.ForeignKey('asset.id'), nullable=False)
-    severity = db.Column(db.String(50), nullable=False) # Critical, High, Medium, Low, Informational
+    severity = db.Column(db.String(50), nullable=False) # lowercase: critical, high, medium, low, info
     cve = db.Column(db.String(100), nullable=True)
     description = db.Column(db.Text, nullable=True)
     recommendation = db.Column(db.Text, nullable=True)

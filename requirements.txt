@@ -8,3 +8,6 @@ gvm-tools==24.3.0
 cryptography==44.0.0
 requests==2.32.3
 pdfkit==1.0.0
+fastapi==0.111.0
+uvicorn==0.30.1
+pydantic==2.7.4

@@ -46,7 +46,7 @@ compose() {
 }
 
 export ROOT_DIR
-export DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@localhost:${DB_PORT}/${DB_NAME}"
+export DATABASE_URL="postgresql://${DB_USER}:${DB_PASSWORD}@127.0.0.1:${DB_PORT}/${DB_NAME}"
 export CELERY_BROKER_URL="redis://localhost:${REDIS_PORT}/0"
 export CELERY_RESULT_BACKEND="redis://localhost:${REDIS_PORT}/0"
 export FLASK_APP="app.py"
