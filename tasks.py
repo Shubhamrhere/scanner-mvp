@@ -139,7 +139,12 @@ def run_nuclei_engine(scan_id, asset_ids):
 
         finally:
             se.finished_at = datetime.utcnow()
-            db.session.commit()
+            # Do not overwrite a 'canceled' engine row with a late completion/failure.
+            db.session.refresh(se)
+            if se.status not in ('canceled',):
+                db.session.commit()
+            else:
+                db.session.rollback()
             _update_scan_status(scan_id, db)
 
 
@@ -196,7 +201,12 @@ def run_openvas_engine(scan_id, asset_ids):
 
         finally:
             se.finished_at = datetime.utcnow()
-            db.session.commit()
+            # Do not overwrite a 'canceled' engine row with a late completion/failure.
+            db.session.refresh(se)
+            if se.status not in ('canceled',):
+                db.session.commit()
+            else:
+                db.session.rollback()
             _update_scan_status(scan_id, db)
 
 
@@ -222,13 +232,18 @@ def _update_scan_status(scan_id, db):
     Called by each engine sub-task when it finishes.
 
     Rules:
-      - all queued          → queued
-      - any running/queued  → running
-      - all finished (completed or failed) → completed
+      - scan already 'canceled'   → never overwrite (terminal)
+      - all queued                → queued
+      - any running/queued        → running
+      - all finished (completed/failed/canceled) → completed
     """
     from models import Scan, ScanEngine
     scan = Scan.query.get(scan_id)
     if not scan:
+        return
+
+    # Cancel is a hard terminal state — nothing can overwrite it.
+    if scan.status == 'canceled':
         return
 
     engines = ScanEngine.query.filter_by(scan_id=scan_id).all()
@@ -236,13 +251,18 @@ def _update_scan_status(scan_id, db):
         return
 
     statuses = {e.status for e in engines}
-    terminal = {'completed', 'failed'}
+    terminal = {'completed', 'failed', 'canceled'}
 
     if statuses <= {'queued'}:
         scan.status = 'queued'
     elif all(s in terminal for s in statuses):
-        scan.status = 'completed'
-        scan.end_time = datetime.utcnow()
+        if 'failed' in statuses:
+            scan.status = 'failed'
+        else:
+            scan.status = 'completed'
+        
+        if not scan.end_time:
+            scan.end_time = datetime.utcnow()
     else:
         scan.status = 'running'
 
@@ -477,33 +497,52 @@ def _run_openvas_scan(scan_id, asset_id, target, se, db, Finding):
 
 
 def _wait_for_openvas_socket(se, db):
-    waited = 0
-    while not os.path.exists(OPENVAS_SOCKET_PATH) and waited < OPENVAS_CONNECT_TIMEOUT:
-        time.sleep(10)
-        waited += 10
-        se.progress = f"Waiting for OpenVAS socket ({waited}/{OPENVAS_CONNECT_TIMEOUT}s)..."
-        db.session.commit()
-    if not os.path.exists(OPENVAS_SOCKET_PATH):
-        raise Exception(
-            f"OpenVAS socket not found at {OPENVAS_SOCKET_PATH} after {OPENVAS_CONNECT_TIMEOUT} seconds."
-        )
+    # 1. Immediate Health/Connectivity Check
+    exists = os.path.exists(OPENVAS_SOCKET_PATH)
+    can_rw = os.access(OPENVAS_SOCKET_PATH, os.R_OK | os.W_OK) if exists else False
+    
+    # Log exact socket path, existence result, permission result
+    print(f"[OpenVAS] Socket check: path={OPENVAS_SOCKET_PATH}, exists={exists}, can_rw={can_rw}")
+    
+    if not exists:
+        # Bounded retry: wait up to 60s for the container to create the socket
+        print(f"[OpenVAS] Socket {OPENVAS_SOCKET_PATH} not found. Waiting up to 60s for it to appear...")
+        waited = 0
+        while not os.path.exists(OPENVAS_SOCKET_PATH) and waited < 60:
+            time.sleep(10)
+            waited += 10
+            se.progress = f"Waiting for OpenVAS socket ({waited}/60s)..."
+            db.session.commit()
+            
+        if not os.path.exists(OPENVAS_SOCKET_PATH):
+            raise Exception(f"OpenVAS socket missing at {OPENVAS_SOCKET_PATH} after 60s. (Is worker in correct container?)")
+            
+    # Check permissions again if it just appeared
+    if not os.access(OPENVAS_SOCKET_PATH, os.R_OK | os.W_OK):
+        raise Exception(f"Permission denied to OpenVAS socket {OPENVAS_SOCKET_PATH}. Worker user cannot read/write.")
 
 
 def _wait_for_openvas_connection(connection, se, db):
     connected = False
     waited = 0
-    while not connected and waited < OPENVAS_CONNECT_TIMEOUT:
+    max_wait = 300  # 5 mins bounded retry instead of 15 mins
+    last_err = None
+    
+    while not connected and waited < max_wait:
         try:
             connection.connect()
             connection.disconnect()
             connected = True
-        except Exception:
+        except Exception as e:
+            last_err = str(e)
+            print(f"[OpenVAS] Connection failed: {last_err}. Retrying in 10s...")
             time.sleep(10)
             waited += 10
-            se.progress = f"Waiting for OpenVAS connection ({waited}/{OPENVAS_CONNECT_TIMEOUT}s)..."
+            se.progress = f"Waiting for OpenVAS connection ({waited}/{max_wait}s)..."
             db.session.commit()
+            
     if not connected:
-        raise Exception(f"Could not connect to OpenVAS socket after {OPENVAS_CONNECT_TIMEOUT} seconds.")
+        raise Exception(f"Could not connect to OpenVAS socket after {max_wait}s. Last error: {last_err}")
 
 
 def _get_port_list_id(gmp):

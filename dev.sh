@@ -82,10 +82,10 @@ case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*) IS_WINDOWS=1 ;;
 esac
 
-# Celery's default prefork pool is not supported on Windows.
 CELERY_POOL=""
 if [[ "${IS_WINDOWS}" == "1" ]]; then
-    CELERY_POOL="--pool=solo"
+    # Use threads on Windows so synchronous time.sleep doesn't block the only worker
+    CELERY_POOL="--pool=threads --concurrency=4"
 fi
 
 # Find a host Python that pip can install binary wheels for.
@@ -173,8 +173,8 @@ cmd_setup() {
 }
 
 cmd_up() {
-    info "Starting infra (db, redis, openvas) ..."
-    compose up -d db redis openvas
+    info "Starting infra (db, redis, openvas, worker) ..."
+    compose up -d db redis openvas worker
     wait_for_db
     ok "Infra is up. Run './dev.sh dev' (or './dev.sh web' + './dev.sh worker')."
 }
@@ -191,7 +191,7 @@ cmd_worker() {
     require_venv
     local py; py="$(venv_python)"
     ensure_infra
-    info "Starting Celery worker"
+    info "Starting Celery worker locally (Note: Local worker cannot access OpenVAS Unix socket natively)"
     exec "${py}" -m celery -A tasks.celery worker --loglevel=info ${CELERY_POOL}
 }
 
@@ -199,13 +199,7 @@ cmd_dev() {
     require_venv
     local py; py="$(venv_python)"
     ensure_infra
-    mkdir -p "${LOG_DIR}"
-    info "Starting Celery worker in background (logs -> ${WORKER_LOG})"
-    "${py}" -m celery -A tasks.celery worker --loglevel=info ${CELERY_POOL} >"${WORKER_LOG}" 2>&1 &
-    local worker_pid=$!
-    echo "${worker_pid}" > "${PID_FILE}"
-    trap 'warn "Stopping background worker"; kill "$(cat "${PID_FILE}")" 2>/dev/null || true; rm -f "${PID_FILE}";' EXIT
-    info "Starting Flask dev server on http://localhost:5000 (Ctrl+C to stop everything)"
+    info "Starting Flask dev server on http://localhost:5000 (Ctrl+C to stop). Worker runs in Docker."
     "${py}" -m flask run --debug
 }
 

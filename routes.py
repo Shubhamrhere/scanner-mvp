@@ -66,7 +66,15 @@ def scans():
 @bp.route('/scans/new', methods=['GET', 'POST'])
 def new_scan():
     if request.method == 'POST':
-        scan_type = request.form.get('type') or 'external'
+        scan_type = request.form.get('type')
+        if not scan_type:
+            import warnings
+            warnings.warn(
+                "new_scan(): 'type' field missing from form submission — "
+                "defaulting to 'external'. The scan form should always send this field.",
+                stacklevel=2
+            )
+            scan_type = 'external'
         asset_ids = request.form.getlist('asset_ids')
         
         if not asset_ids:
@@ -110,13 +118,19 @@ def scan_detail(id):
 def cancel_scan(id):
     scan = Scan.query.get_or_404(id)
     if scan.status in ['queued', 'running']:
-        if scan.celery_task_id:
-            from celery.app.control import Control
-            from tasks import celery
-            Control(celery).revoke(scan.celery_task_id, terminate=True, signal='SIGTERM')
-            
-        # Cancel any running OpenVAS engine tasks
+        from celery.app.control import Control
+        from tasks import celery
+
+        # Revoke engine sub-tasks cooperatively (no terminate=True —
+        # each engine checks DB status in its finally block before committing).
         for se in scan.engines:
+            if se.celery_task_id:
+                try:
+                    Control(celery).revoke(se.celery_task_id, terminate=False)
+                except Exception as e:
+                    print(f"Revoke failed for {se.engine} task {se.celery_task_id}: {e}")
+
+            # Stop any in-flight OpenVAS GVM task gracefully
             if se.engine == 'openvas' and se.openvas_task_id:
                 try:
                     from gvm.connections import UnixSocketConnection
@@ -128,16 +142,23 @@ def cancel_scan(id):
                         gmp.authenticate('admin', 'admin')
                         gmp.stop_task(se.openvas_task_id)
                 except Exception as e:
-                    print(f"Failed to stop OpenVAS task: {e}")
-                    
-        scan.status = 'completed'
-        scan.progress = 'Scan cancelled by user.'
+                    print(f"Failed to stop OpenVAS task {se.openvas_task_id}: {e}")
+
+            # Mark the engine row as canceled — the engine finally block will see this
+            # on db.session.refresh(se) and will NOT commit a 'failed' or 'completed' over it.
+            se.status = 'canceled'
+            se.progress = 'Canceled by user'
+            se.finished_at = datetime.utcnow()
+
+        # Mark the parent scan as canceled — _update_scan_status will not overwrite this.
+        scan.status = 'canceled'
+        scan.progress = 'Canceled by user'
         scan.end_time = datetime.utcnow()
         db.session.commit()
-        flash('Scan cancelled successfully.', 'info')
+        flash('Scan canceled successfully.', 'info')
     else:
-        flash('Scan cannot be cancelled in its current state.', 'error')
-        
+        flash('Scan cannot be canceled in its current state.', 'error')
+
     return redirect(url_for('main.scan_detail', id=scan.id))
 
 @bp.route('/findings')

@@ -6,6 +6,34 @@
 <section class="glacier-card p-8 max-w-2xl mx-auto mt-6">
     <form method="POST" action="/scans/new" class="flex flex-col gap-6">
         
+        {# ── Scan Type ── #}
+        <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-semibold text-slate-500 tracking-wider uppercase">Scan Type *</label>
+            <div class="flex gap-3 mt-1">
+                <label class="flex-1 flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all
+                              border-glacier-blue bg-glacier-blue/10 scan-type-option" id="label-external">
+                    <input type="radio" name="type" value="external" required checked
+                           class="w-4 h-4 text-glacier-blue focus:ring-glacier-blue"
+                           onchange="updateTypeLabels()">
+                    <div class="flex flex-col gap-0.5">
+                        <span class="text-sm font-semibold text-slate-700">External Scan</span>
+                        <span class="text-xs text-slate-500">Internet-facing assets via OpenVAS + Nuclei</span>
+                    </div>
+                </label>
+                <label class="flex-1 flex items-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all
+                              border-white/30 bg-white/10 scan-type-option" id="label-internal">
+                    <input type="radio" name="type" value="internal" required
+                           class="w-4 h-4 text-glacier-blue focus:ring-glacier-blue"
+                           onchange="updateTypeLabels()">
+                    <div class="flex flex-col gap-0.5">
+                        <span class="text-sm font-semibold text-slate-700">Internal Scan</span>
+                        <span class="text-xs text-slate-500">Internal network assets via presence agent</span>
+                    </div>
+                </label>
+            </div>
+        </div>
+
+        {# ── Target Assets ── #}
         <div class="flex flex-col gap-1.5">
             <label class="text-xs font-semibold text-slate-500 tracking-wider uppercase">Target Assets *</label>
             <div class="text-xs text-slate-500 mt-1 mb-2">Routing is automatic: domains/URLs run Nuclei, IPs/subnets run OpenVAS. Assets with both run both.</div>
@@ -34,4 +62,21 @@
         </div>
     </form>
 </section>
+
+<script>
+function updateTypeLabels() {
+    const radios = document.querySelectorAll('input[name="type"]');
+    radios.forEach(function(radio) {
+        const card = document.getElementById('label-' + radio.value);
+        if (!card) return;
+        if (radio.checked) {
+            card.classList.add('border-glacier-blue', 'bg-glacier-blue/10');
+            card.classList.remove('border-white/30', 'bg-white/10');
+        } else {
+            card.classList.remove('border-glacier-blue', 'bg-glacier-blue/10');
+            card.classList.add('border-white/30', 'bg-white/10');
+        }
+    });
+}
+</script>
 {% endblock %}
