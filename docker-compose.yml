@@ -61,7 +61,9 @@ services:
       - SKIPSYNC=true
     volumes:
       - gvmd_socket:/run/gvmd
+      - gvmd_data:/data
 
 volumes:
   postgres_data:
   gvmd_socket:
+  gvmd_data:

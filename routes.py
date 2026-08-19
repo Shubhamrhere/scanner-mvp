@@ -66,7 +66,7 @@ def scans():
 @bp.route('/scans/new', methods=['GET', 'POST'])
 def new_scan():
     if request.method == 'POST':
-        scan_type = request.form.get('type')
+        scan_type = request.form.get('type') or 'external'
         asset_ids = request.form.getlist('asset_ids')
         
         if not asset_ids:
@@ -95,7 +95,16 @@ def new_scan():
 @bp.route('/scans/<int:id>')
 def scan_detail(id):
     scan = Scan.query.get_or_404(id)
-    return render_template('scan_detail.html', scan=scan)
+    finding_details = [{
+        'severity': f.severity,
+        'cve': f.cve or '',
+        'asset': (f.asset.hostname or f.asset.ip_address) if f.asset else '',
+        'ip': (f.asset.ip_address or '') if f.asset else '',
+        'description': f.description or '',
+        'recommendation': f.recommendation or '',
+        'detected': f.created_at.strftime('%Y-%m-%d %H:%M:%S') if f.created_at else '',
+    } for f in scan.findings]
+    return render_template('scan_detail.html', scan=scan, finding_details=finding_details)
 
 @bp.route('/scans/<int:id>/cancel', methods=['POST'])
 def cancel_scan(id):
@@ -134,7 +143,16 @@ def cancel_scan(id):
 @bp.route('/findings')
 def findings():
     all_findings = Finding.query.order_by(Finding.created_at.desc()).all()
-    return render_template('findings.html', findings=all_findings)
+    finding_details = [{
+        'severity': f.severity,
+        'cve': f.cve or '',
+        'asset': (f.asset.hostname or f.asset.ip_address) if f.asset else '',
+        'ip': (f.asset.ip_address or '') if f.asset else '',
+        'description': f.description or '',
+        'recommendation': f.recommendation or '',
+        'detected': f.created_at.strftime('%Y-%m-%d %H:%M:%S') if f.created_at else '',
+    } for f in all_findings]
+    return render_template('findings.html', findings=all_findings, finding_details=finding_details)
 
 @bp.route('/reports')
 def reports():
